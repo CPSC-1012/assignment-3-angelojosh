@@ -1,0 +1,533 @@
+﻿/*
+ * Assignment 3
+ * Author: Angelo Sario
+ * Date: April 10, 2026
+ * Purpose: Allows user to enter/save/load/edit/view daily sales values
+            from a file. Allows and displays simple data analysis
+            (mean/max/min/graph) of sales values for a given month.
+ */
+
+using System;
+using System.IO;
+using System.Globalization;
+
+class Program
+{
+    const int MaxDays = 31;
+
+    static void Main()
+    {
+        double[] sales = new double[MaxDays];
+        string[] dates = new string[MaxDays];
+        int count = 0;
+
+        bool running = true;
+
+        // STARTUP DISPLAY
+        DisplayMainMenu();
+
+        while (running)
+        {
+            string choice = Prompt("\nEnter MAIN MENU option ('D' to display menu): ").ToUpper();
+
+            if (choice == "D")
+            {
+                DisplaySimpleMenu();
+                continue;
+            }
+
+            switch (choice)
+            {
+                case "N":
+                    Console.WriteLine("\nDisclaimer: proceeding will overwrite all unsaved data.");
+                    Console.WriteLine("Hint: Select EDIT from the main menu instead, to change individual days.");
+                    Console.WriteLine("Hint: You'll need to enter data for the whole month.");
+
+                    string confirm = Prompt("\nDo you wish to proceed anyways? (y/N): ").ToUpper();
+
+                    if (confirm == "Y")
+                        count = EnterSales(sales, dates);
+                    else
+                        Console.WriteLine("Operation cancelled.");
+                    break;
+
+                case "S":
+
+                    Console.WriteLine("\nDisclaimer: saving to an EXISTING file will overwrite data currently on that file");
+                    Console.WriteLine("Hint: Files will be saved to this program's directory by default.");
+                    Console.WriteLine("Hint: If the file does not yet exist it will be created.");
+
+                    string proceed = Prompt("\nDo you wish to proceed anyways? (y/N): ").ToUpper();
+
+                    if (proceed == "Y")
+                    {
+                        string fileName = Prompt("Enter name of .csv or .txt file to save (e.g. JAN-2024-sales.csv): ");
+
+                        if (fileName.EndsWith(".csv") || fileName.EndsWith(".txt"))
+                        {
+                            Console.WriteLine("It looks like your filename ends in .csv or .txt, which is good!");
+                        }
+
+                        SaveSalesFile(fileName, sales, dates, count);
+
+                        Console.WriteLine($"\nData successfully saved to file: {fileName}");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Operation cancelled.");
+                    }
+
+                    break;
+
+                case "E":
+
+                    Console.WriteLine("\nDisclaimer: editing will overwrite unsaved sales value.");
+                    Console.WriteLine("Hint: Save to a file before editing");
+
+                    string editConfirm = Prompt("\nDo you wish to proceed anyway? (y/N): ").ToUpper();
+
+                    if (editConfirm == "Y")
+                    {
+                        if (count == 0)
+                        {
+                            Console.WriteLine("\nNo data available to edit.");
+                            break;
+                        }
+
+                        // Show current entries FIRST
+                        Console.WriteLine("\nCurrent Sales Entries:");
+                        for (int i = 0; i < count; i++)
+                            Console.WriteLine($"{dates[i]} - ${sales[i]:F2}");
+
+                        // Pause before next step
+                        Console.WriteLine("\nPress <enter> to continue...");
+                        Console.ReadLine();
+
+                        // Show "filename / month-year"
+                        Console.WriteLine($"\nYou are currently editing data for: {GetMonthYear(dates, count)}");
+
+                        // Ask for day input
+                        int day;
+
+                        while (true)
+                        {
+                            Console.Write("Enter the day of the month (e.g. 31) for which you want to edit sales value: ");
+
+                            if (int.TryParse(Console.ReadLine(), out day) && day >= 1 && day <= 31)
+                                break;
+
+                            Console.WriteLine("Invalid day. Please try again.");
+                        }
+
+                        // Find correct index by day
+                        int index = -1;
+
+                        for (int i = 0; i < count; i++)
+                        {
+                            int storedDay = int.Parse(dates[i].Substring(4, 2));
+                            if (storedDay == day)
+                            {
+                                index = i;
+                                break;
+                            }
+                        }
+
+                        if (index == -1)
+                        {
+                            Console.WriteLine("\nNo record found for that day.");
+                            Console.WriteLine("\nPress <enter> to continue...");
+                            Console.ReadLine();
+                            break;
+                        }
+
+                        double newValue = PromptDouble($"Enter the NEW sales for day {day}: ");
+
+                        sales[index] = newValue;
+
+                        Console.WriteLine($"\nSuccessfully changed sales for day {day} to ${newValue:F2}");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Edit cancelled.");
+                    }
+
+                    Console.WriteLine("\nPress <enter> to continue...");
+                    Console.ReadLine();
+
+                    break;
+
+                case "L":
+
+                    Console.WriteLine("\nDisclaimer: proceeding will overwrite all unsaved data.");
+                    Console.WriteLine("Hint: If you entered New Daily sales entries, save them first!");
+
+                    string loadConfirm = Prompt("\nDo you wish to proceed anyway? (y/N): ").ToUpper();
+
+                    if (loadConfirm == "Y")
+                    {
+                        string fileName = Prompt("Enter name of file to load: ");
+
+                        try
+                        {
+                            count = LoadSalesFile(fileName, sales, dates);
+
+                            Console.WriteLine("\nFile loaded into temporary memory");
+                            Console.WriteLine($"({count} records) were loaded");
+                        }
+                        catch (Exception)
+                        {
+                            Console.WriteLine("\nSorry, file not found.");
+                            Console.WriteLine("Hint: Include file extension (e.g. .csv)");
+                            Console.WriteLine("Hint: Enter filename only (e.g. jan-2024-sales.csv if file is in the program directory)");
+                            Console.WriteLine("Hint: Otherwise enter the full file path (e.g. C:/Users/Username/Documents/jan-2024-sales.csv)");
+
+                            Console.WriteLine($"{0} records were loaded");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("Operation cancelled.");
+                    }
+
+                    break;
+
+                case "V":
+                    DisplaySalesEntriesFormatted(sales, dates, count);
+                    Console.WriteLine("\nPress <enter> to continue...");
+                    Console.ReadLine();
+                    break;
+
+                case "M":
+                    AnalysisMenu(sales, dates, count);
+                    break;
+
+                case "Q":
+
+                    string quitConfirm = Prompt("Are you sure you want to quit (y/N): ").ToUpper();
+
+                    if (quitConfirm == "Y")
+                    {
+                        Console.WriteLine("\nProgram terminated. Press Enter to exit program");
+                        Console.ReadLine();
+                        running = false;
+                    }
+                    else
+                    {
+                        Console.WriteLine("Quit cancelled.");
+                    }
+
+                    break;
+
+                default:
+                    Console.WriteLine("Invalid option.");
+                    break;
+            }
+        }
+    }
+
+    // ================= MAIN MENU =================
+    static void DisplayMainMenu()
+    {
+        Console.WriteLine("=========================");
+        Console.WriteLine("=                       =");
+        Console.WriteLine("=     Monthly Sales     =");
+        Console.WriteLine("=                       =");
+        Console.WriteLine("=========================");
+
+        Console.WriteLine("\nMAIN MENU");
+        Console.WriteLine("-----------------------------------------\n");
+
+        Console.WriteLine("[N]ew Daily Sales Entry");
+        Console.WriteLine("[S]ave Entries to File");
+        Console.WriteLine("[E]dit Sales Entries");
+        Console.WriteLine("[L]oad Sales Files");
+        Console.WriteLine("[V]iew Entered/Loaded Sales");
+        Console.WriteLine("[M]onthly Statistics");
+        Console.WriteLine("[D]isplay Main Menu");
+        Console.WriteLine("[Q]uit Program");
+    }
+
+    static void DisplaySimpleMenu()
+    {
+        Console.WriteLine("\nMAIN MENU");
+        Console.WriteLine("-----------------------------------------\n");
+
+        Console.WriteLine("[N]ew Daily Sales Entry");
+        Console.WriteLine("[S]ave Entries to File");
+        Console.WriteLine("[E]dit Sales Entries");
+        Console.WriteLine("[L]oad Sales Files");
+        Console.WriteLine("[V]iew Entered/Loaded Sales");
+        Console.WriteLine("[M]onthly Statistics");
+        Console.WriteLine("[D]isplay Main Menu");
+        Console.WriteLine("[Q]uit Program");
+    }
+
+    // ================= ANALYSIS MENU =================
+    static void AnalysisMenu(double[] sales, string[] dates, int count)
+    {
+        bool back = false;
+
+        while (!back)
+        {
+            Console.WriteLine("\nANALYSIS SUB-MENU");
+            Console.WriteLine("--------------------------------------------------------");
+            Console.WriteLine("[A]verage Sales");
+            Console.WriteLine("[H]ighest Sales");
+            Console.WriteLine("[L]owest Sales");
+            Console.WriteLine("[G]raph Sales");
+            Console.WriteLine("[R]eturn to MAIN MENU");
+
+            string choice = Prompt("\nEnter ANALYSIS sub-menu option: ").ToUpper();
+            string monthYear = GetMonthYear(dates, count);
+
+            switch (choice)
+            {
+                case "A":
+                    Console.WriteLine($"\nThe mean sales for {monthYear} is: ${MeanAverageSales(sales, count):F2}");
+                    break;
+
+                case "H":
+                    Console.WriteLine($"\nThe largest sales for {monthYear} is: ${sales[HighestSales(sales, count)]:F2}");
+                    break;
+
+                case "L":
+                    Console.WriteLine($"\nThe smallest sales for {monthYear} is: ${sales[LowestSales(sales, count)]:F2}");
+                    break;
+
+                case "G":
+                    DisplayGraph(sales, dates, count);
+                    break;
+
+                case "R":
+                    back = true;
+                    break;
+
+                default:
+                    Console.WriteLine("Invalid option.");
+                    break;
+            }
+        }
+    }
+
+    // ================= GRAPH =================
+    static void DisplayGraph(double[] sales, string[] dates, int count)
+    {
+        if (count == 0)
+        {
+            Console.WriteLine("No data available.");
+            return;
+        }
+
+        double max = sales[HighestSales(sales, count)];
+
+        Console.WriteLine("\n=== SALES GRAPH ===\n");
+
+        for (int y = (int)(max / 50 + 1) * 50; y >= 0; y -= 50)
+        {
+            Console.Write($"{y,5}|");
+
+            for (int i = 0; i < count; i++)
+            {
+                if (sales[i] >= y && sales[i] < y + 50)
+                {
+                    Console.Write($"${sales[i]:F0}".PadRight(6));
+                }
+                else
+                {
+                    Console.Write("      ");
+                }
+            }
+
+            Console.WriteLine();
+        }
+
+        Console.Write("     ");
+        for (int i = 0; i < count; i++)
+            Console.Write("------");
+
+        Console.WriteLine();
+
+        Console.Write("      ");
+        for (int i = 0; i < count; i++)
+        {
+            string day = dates[i].Substring(4, 2);
+            Console.Write($"{day.PadRight(6)}");
+        }
+
+        Console.WriteLine();
+    }
+
+    // ================= ENTER SALES (UPDATED MONTH + YEAR VALIDATION ONLY) =================
+    static int EnterSales(double[] sales, string[] dates)
+    {
+        int count = 0;
+
+        // ===== UPDATED MONTH VALIDATION =====
+        string monthInput;
+
+        while (true)
+        {
+            monthInput = Prompt("\nEnter the month (e.g. JAN): ").ToUpper();
+
+            if (monthInput == "JAN" || monthInput == "FEB" || monthInput == "MAR" ||
+                monthInput == "APR" || monthInput == "MAY" || monthInput == "JUN" ||
+                monthInput == "JUL" || monthInput == "AUG" || monthInput == "SEP" ||
+                monthInput == "OCT" || monthInput == "NOV" || monthInput == "DEC")
+            {
+                break;
+            }
+
+            Console.WriteLine("Invalid input. Please try again.");
+        }
+
+        // ===== UPDATED YEAR VALIDATION =====
+        string yearInput;
+        int year;
+
+        while (true)
+        {
+            yearInput = Prompt("\nEnter the year (yyyy): ");
+
+            if (yearInput.Length == 4 && int.TryParse(yearInput, out year))
+            {
+                break;
+            }
+
+            Console.WriteLine("Invalid input. Please try again");
+        }
+
+        DateTime tempDate = DateTime.ParseExact(monthInput + "-01-" + year,
+            "MMM-dd-yyyy",
+            CultureInfo.InvariantCulture);
+
+        int daysInMonth = DateTime.DaysInMonth(year, tempDate.Month);
+
+        for (int i = 0; i < daysInMonth; i++)
+        {
+            string day = (i + 1).ToString("D2");
+            double sale;
+
+            while (true)
+            {
+                Console.WriteLine("\nHint: enter -1 to cancel and exit.");
+                string input = Prompt($"Enter the sales for day {day}: ");
+
+                if (input == "-1")
+                {
+                    Console.WriteLine($"\nCanceling data entry. Only {count} records saved.");
+                    Console.WriteLine($"Entries completed. {count} records in temporary memory.");
+                    return count;
+                }
+
+                if (double.TryParse(input, out sale) && sale >= 0)
+                    break;
+
+                Console.WriteLine("Invalid sales amount.");
+            }
+
+            dates[count] = $"{monthInput}-{day}-{year}";
+            sales[count] = sale;
+            count++;
+        }
+
+        Console.WriteLine($"\nEntries completed. {count} records in temporary memory.");
+        return count;
+    }
+
+    // ================= HELPERS =================
+    static string Prompt(string msg)
+    {
+        Console.Write(msg);
+        return Console.ReadLine();
+    }
+
+    static double MeanAverageSales(double[] sales, int count)
+    {
+        double sum = 0;
+        for (int i = 0; i < count; i++) sum += sales[i];
+        return sum / count;
+    }
+
+    static int HighestSales(double[] sales, int count)
+    {
+        int idx = 0;
+        for (int i = 1; i < count; i++)
+            if (sales[i] > sales[idx]) idx = i;
+        return idx;
+    }
+
+    static int LowestSales(double[] sales, int count)
+    {
+        int idx = 0;
+        for (int i = 1; i < count; i++)
+            if (sales[i] < sales[idx]) idx = i;
+        return idx;
+    }
+
+    static string GetMonthYear(string[] dates, int count)
+    {
+        if (count == 0) return "UNKNOWN";
+        return $"{dates[0].Substring(0, 3)} {dates[0].Substring(dates[0].Length - 4)}";
+    }
+
+    static void SaveSalesFile(string file, double[] sales, string[] dates, int count)
+    {
+        using StreamWriter w = new StreamWriter(file);
+        w.WriteLine("Date,Sales");
+
+        for (int i = 0; i < count; i++)
+            w.WriteLine($"{dates[i]},{sales[i]:F2}");
+    }
+
+    static int LoadSalesFile(string file, double[] sales, string[] dates)
+    {
+        int count = 0;
+
+        using StreamReader r = new StreamReader(file);
+        r.ReadLine();
+
+        while (!r.EndOfStream)
+        {
+            var parts = r.ReadLine().Split(',');
+            dates[count] = parts[0];
+            sales[count] = double.Parse(parts[1]);
+            count++;
+        }
+
+        return count;
+    }
+
+    static void DisplaySalesEntriesFormatted(double[] sales, string[] dates, int count)
+    {
+        Console.WriteLine("\nCurrent Sales Entries");
+        Console.WriteLine("==============\n");
+
+        Console.WriteLine("Date                           Sales Value");
+        Console.WriteLine("----------                     ------------");
+
+        for (int i = 0; i < count; i++)
+            Console.WriteLine($"{dates[i],-30} ${sales[i]:F2}");
+    }
+
+    static void EditEntries(double[] sales, string[] dates, int count)
+    {
+        for (int i = 0; i < count; i++)
+            Console.WriteLine($"{i}. {dates[i]} {sales[i]}");
+
+        int index = int.Parse(Console.ReadLine());
+        sales[index] = PromptDouble("Enter new sales value: ");
+    }
+
+    static double PromptDouble(string msg)
+    {
+        double val;
+        while (true)
+        {
+            Console.Write(msg);
+            if (double.TryParse(Console.ReadLine(), out val) && val >= 0)
+                return val;
+
+            Console.WriteLine("Invalid input.");
+        }
+    }
+}
